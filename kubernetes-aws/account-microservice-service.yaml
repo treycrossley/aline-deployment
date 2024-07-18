@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert
+    kompose.version: 1.33.0 (HEAD)
+  labels:
+    io.kompose.service: account-microservice
+  name: account-microservice
+spec:
+  ports:
+    - port: 8072
+      targetPort: 8072
+  selector:
+    io.kompose.service: account-microservice

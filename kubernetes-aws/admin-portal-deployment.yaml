@@ -1,0 +1,60 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert
+    kompose.version: 1.33.0 (HEAD)
+  labels:
+    io.kompose.service: admin-portal
+  name: admin-portal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: admin-portal
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert
+        kompose.version: 1.33.0 (HEAD)
+      labels:
+        io.kompose.network/aline-financial-default: "true"
+        io.kompose.service: admin-portal
+    spec:
+      containers:
+        - image: 590184030834.dkr.ecr.us-east-1.amazonaws.com/admin-portal-tc:v2
+          name: admin-portal
+          env:
+            - name: EXTEND_ESLINT
+              valueFrom:
+                configMapKeyRef:
+                  name: frontend-config
+                  key: EXTEND_ESLINT
+            - name: REACT_APP_TOKEN_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: frontend-config
+                  key: REACT_APP_TOKEN_NAME
+            - name: REACT_APP_API_BASEURL
+              valueFrom:
+                configMapKeyRef:
+                  name: frontend-config
+                  key: REACT_APP_API_BASEURL
+            - name: REACT_APP_BROKER_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: frontend-config
+                  key: REACT_APP_BROKER_URL
+            - name: SONAR_TOKEN
+              valueFrom:
+                configMapKeyRef:
+                  name: frontend-config
+                  key: SONAR_TOKEN
+            - name: SONAR_HOST_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: frontend-config
+                  key: SONAR_HOST_URL
+          ports:
+            - containerPort: 80
+      restartPolicy: Always

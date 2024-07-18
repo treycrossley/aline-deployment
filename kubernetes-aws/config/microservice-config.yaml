@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: microservice-config
+data:
+  DB_USERNAME: "admin"
+  DB_PASSWORD: "Password123!"
+  DB_NAME: "aline"
+  DB_HOST: "aline-db-tc.cdw6w0asquiq.us-east-1.rds.amazonaws.com"
+  DB_PORT: "3306"
+  USER_APP_PORT: "8070"
+  UNDERWRITER_APP_PORT: "8071"
+  ACCOUNT_APP_PORT: "8072"
+  TRANSACTION_APP_PORT: "8073"
+  BANK_APP_PORT: "8083"
+  JWT_SECRET_KEY: "x2wOrQfY6RQIfE1ETwZtpflC19KyfN9N"
+  ENCRYPT_SECRET_KEY: "mf5ZIxRkF6IJj1AIVreII2ZQ4uhtJ8zC"

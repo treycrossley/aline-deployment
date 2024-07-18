@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+data:
+  APP_PORT: "8080"
+  BASEURL: "http://<INSERT_LOAD_BALANCER_URL_HERE>"
+  PORTAL_LANDING: "${BASEURL}"
+  PORTAL_DASHBOARD: "${BASEURL}/member"
+  PORTAL_ADMIN: "${BASEURL}/admin"
+  APP_SERVICE_HOST: "${BASEURL}"

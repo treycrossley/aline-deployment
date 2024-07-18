@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Service
+metadata:
+  annotations:
+    kompose.cmd: kompose convert
+    kompose.version: 1.33.0 (HEAD)
+  labels:
+    io.kompose.service: landing-portal
+  name: landing-portal
+spec:
+  ports:
+    - port: 3000
+      targetPort: 80
+  selector:
+    io.kompose.service: landing-portal

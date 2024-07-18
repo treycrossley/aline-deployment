@@ -1,0 +1,29 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert
+    kompose.version: 1.33.0 (HEAD)
+  labels:
+    io.kompose.service: member-dashboard
+  name: member-dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: member-dashboard
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert
+        kompose.version: 1.33.0 (HEAD)
+      labels:
+        io.kompose.network/aline-financial-default: "true"
+        io.kompose.service: member-dashboard
+    spec:
+      containers:
+        - image: 590184030834.dkr.ecr.us-east-1.amazonaws.com/member-dashboard-tc:v4
+          name: member-dashboard
+          ports:
+            - containerPort: 80
+      restartPolicy: Always

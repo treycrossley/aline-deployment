@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    kompose.cmd: kompose convert
+    kompose.version: 1.33.0 (HEAD)
+  labels:
+    io.kompose.service: transaction-microservice
+  name: transaction-microservice
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      io.kompose.service: transaction-microservice
+  template:
+    metadata:
+      annotations:
+        kompose.cmd: kompose convert
+        kompose.version: 1.33.0 (HEAD)
+      labels:
+        io.kompose.network/aline-financial-default: "true"
+        io.kompose.service: transaction-microservice
+    spec:
+      containers:
+        - image: 590184030834.dkr.ecr.us-east-1.amazonaws.com/transaction-microservice-tc:latest
+          name: transaction-microservice
+          env:
+            - name: DB_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: microservice-config
+                  key: DB_USERNAME
+            - name: DB_PASSWORD
+              valueFrom:
+                configMapKeyRef:
+                  name: microservice-config
+                  key: DB_PASSWORD
+            - name: DB_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: microservice-config
+                  key: DB_NAME
+            - name: DB_HOST
+              valueFrom:
+                configMapKeyRef:
+                  name: microservice-config
+                  key: DB_HOST
+            - name: DB_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: microservice-config
+                  key: DB_PORT
+            - name: APP_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: microservice-config
+                  key: TRANSACTION_APP_PORT
+            - name: JWT_SECRET_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: microservice-config
+                  key: JWT_SECRET_KEY
+            - name: ENCRYPT_SECRET_KEY
+              valueFrom:
+                configMapKeyRef:
+                  name: microservice-config
+                  key: ENCRYPT_SECRET_KEY
+          ports:
+            - containerPort: 8073
+      restartPolicy: Always
