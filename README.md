@@ -2,8 +2,9 @@
 
 A host repo for all deployment files I wrote during a recent project.
 
-The application files are not in this repo as I do not own them but included are the following
+The application files are not in this repo as I do not own them. This is solely meant to demonstrate my DevOps code quality to potential employers.
 
+included are the following:
 - Dockerfiles for all micro-components
 - k8s deployment/service files for each component
 - Jenkinsfiles for each component's pipeline
