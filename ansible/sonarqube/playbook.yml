@@ -1,0 +1,7 @@
+# playbook.yml
+---
+- hosts: sonarqube
+  become: yes
+  gather_facts: yes
+  roles:
+    - sonarqube

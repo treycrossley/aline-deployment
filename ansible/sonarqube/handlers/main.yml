@@ -1,0 +1,9 @@
+---
+- name: Wait for SonarQube port to be ready
+  wait_for:
+    port: 9000
+    delay: 10
+    timeout: 60
+  notify: Wait an extra minute after SonarQube port is ready
+
+

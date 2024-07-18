@@ -1,0 +1,154 @@
+pipeline {
+    agent any
+
+    environment {
+        AWS_REGION = 'us-east-1'
+        AWS_ACCOUNT_ID = '590184030834' // Replace with your AWS account ID
+        AWS_CREDENTIALS = 'aws-credentials-id' // Replace with the ID of your AWS credentials in Jenkins
+        GIT_CREDENTIALS = 'gitlab-login-credential' // Replace with the ID of your GitLab credentials in Jenkins
+        GIT_URL = 'https://git1.smoothstack.com/cohorts/2024/2024-03-11_cloud/organizations/care-bear-cuddle-buddies/trey-crossley/aline-financial/terraform.git'
+        K8s_URL = 'https://git1.smoothstack.com/cohorts/2024/2024-03-11_cloud/organizations/care-bear-cuddle-buddies/trey-crossley/aline-financial/kubernetes-aws.git'
+        CLUSTER_NAME = 'aline_cluster_tc'
+        GET_DNS_SCRIPT = 'kubectl get svc nginx-ingress-controller-tc -o jsonpath="{.status.loadBalancer.ingress[0].hostname}"'
+    }
+
+    options {
+        gitLabConnection('gitlab-connect')
+        gitlabBuilds(builds: ['build'])
+    }
+
+    tools {
+        terraform 'Terraform'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                updateGitlabCommitStatus name: 'build', state: 'running'
+                script {
+                    // Checkout main repository
+                    checkout([$class: 'GitSCM',
+                            branches: [[name: 'develop']],
+                            userRemoteConfigs: [[url: "${GIT_URL}", credentialsId: "${GIT_CREDENTIALS}"]]])
+                }
+            }
+        }
+
+        stage('Run TFLint') {
+            steps {
+                script {
+                    def dirs = ['.', 'network', 'jenkins', 'rds', 'eks']
+                    for (dirName in dirs) {
+                        dir(dirName) {
+                            echo "TFLint: ${dirName == '.' ? 'Root' : dirName.capitalize()}"
+                            catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
+                                sh 'tflint --init'
+                                sh 'tflint'
+                                echo "TFLint: ${dirName == '.' ? 'Root' : dirName.capitalize()} - No Issues found :)"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Terraform Apply - RDS') {
+            steps {
+                dir('rds') {
+                    // Change directory to 'rds' where your RDS Terraform configuration is
+                    withAWS(region: "${AWS_REGION}", credentials: "${AWS_CREDENTIALS}") {
+                        // Initialize and apply Terraform configurations
+                        sh 'terraform init -input=false'
+                        sh 'terraform apply -auto-approve'
+                    }
+                }
+            }
+        }
+
+        stage('Terraform Apply - EKS') {
+            steps {
+                dir('eks') {
+                    // Change directory to 'eks' where your RDS Terraform configuration is
+                    withAWS(region: "${AWS_REGION}", credentials: "${AWS_CREDENTIALS}") {
+                        // Initialize and apply Terraform configurations
+                        sh 'terraform init -input=false'
+                        sh 'terraform apply -auto-approve'
+                    }
+                }
+            }
+        }
+        stage('Update Kubeconfig') {
+            steps {
+                withAWS(region: "${AWS_REGION}", credentials: "${AWS_CREDENTIALS}") {
+                    // Run the aws eks update-kubeconfig command
+                    sh "aws eks update-kubeconfig --region ${AWS_REGION} --name ${CLUSTER_NAME}"
+                }
+            }
+        }
+
+        stage('Checkout K8s Configuration') {
+            steps {
+                script {
+                    // Checkout main repository
+                    checkout([$class: 'GitSCM',
+                            branches: [[name: 'develop']],
+                            userRemoteConfigs: [[url: "${K8s_URL}", credentialsId: "${GIT_CREDENTIALS}"]]])
+                }
+            }
+        }
+
+        stage('Configure K8s with Load Balancer DNS') {
+            steps {
+                script {
+                    withAWS(region: "${AWS_REGION}", credentials: "${AWS_CREDENTIALS}") {
+                        String ingressHostname = sh (
+                            script: "${GET_DNS_SCRIPT}",
+                            returnStdout: true
+                        ).trim()
+                        echo "Load Balancer Hostname: ${ingressHostname}"
+                        def configDir = 'config'
+                        findFiles(glob: "${configDir}/**/*.yaml").each { configFile ->
+                            def content = readFile(configFile.toString())
+                            content = content.replaceAll('<INSERT_LOAD_BALANCER_URL_HERE>', ingressHostname)
+                            writeFile file: configFile.toString(), text: content
+                        }
+
+                        def ingressFilePath = 'services-ingress.yaml'
+                        def ingressContent = readFile(ingressFilePath)
+                        ingressContent = ingressContent.replaceAll('<INSERT_LOAD_BALANCER_URL_HERE>', ingressHostname)
+                        writeFile file: ingressFilePath, text: ingressContent
+
+                    }
+                }
+            }
+        }
+
+        stage('Apply K8s Deployments and Services') {
+            steps {
+                script {
+                    withAWS(region: "${AWS_REGION}", credentials: "${AWS_CREDENTIALS}") {
+                        dir('config') {
+                            sh 'kubectl apply -f .'
+                        }
+                        sh 'kubectl apply -f .'
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs()
+        }
+        failure {
+            updateGitlabCommitStatus name: 'build', state: 'failed'
+        }
+        success {
+            updateGitlabCommitStatus name: 'build', state: 'success'
+        }
+        aborted {
+            updateGitlabCommitStatus name: 'build', state: 'canceled'
+        }
+    }
+}

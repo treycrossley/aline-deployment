@@ -1,0 +1,80 @@
+# sonarqube/tasks/install.yml
+---
+- name: Update package list and upgrade installed packages
+  dnf:
+    name: "*"
+    state: latest
+
+- name: Install required packages
+  dnf:
+    name:
+      - java-17-amazon-corretto-devel
+      - python3-pip
+    state: present
+
+- name: Install botocore and boto3 Python packages
+  pip:
+    name:
+      - botocore
+      - boto3
+      - packaging
+    state: present
+
+- name: Check if /opt/sonar directory exists
+  stat:
+    path: /opt/sonar
+  register: sonar_directory
+
+- name: Install SonarQube
+  shell: |
+    wget https://binaries.sonarsource.com/Distribution/sonarqube/sonarqube-9.9.2.77730.zip -P /opt &&
+    unzip -o /opt/{{ sonar_installation }}.zip -d /opt &&
+    mv -f /opt/{{ sonar_installation }} /opt/sonar &&
+    rm -rf /opt/{{ sonar_installation }}*
+  when: not sonar_directory.stat.exists
+
+- name: Ensure ec2-user owns the /opt/sonar directory
+  file:
+    path: /opt/sonar
+    state: directory
+    owner: "{{ sonar_user }}"
+    group: "{{ sonar_user }}"
+    recurse: yes
+
+- name: Create systemd service file for SonarQube
+  template:
+    src: sonar.service.j2
+    dest: /usr/lib/systemd/system/sonar.service
+
+- name: Reload systemd daemon
+  systemd:
+    daemon_reload: yes
+
+- name: Enable and start SonarQube
+  service:
+    name: sonar
+    state: started
+    enabled: yes
+
+- name: Wait for SonarQube port to be ready
+  wait_for:
+    port: 9000
+    delay: 10
+    timeout: 60
+
+- name: Wait for SonarQube to be UP
+  uri:
+    url: "{{ base_url }}/system/status"
+    method: GET
+    return_content: yes
+  register: sonar_status
+  retries: 20 
+  delay: 20   
+  until: sonar_status.json.status == "UP"  # Check for "UP" status in JSON response
+
+
+
+
+
+
+

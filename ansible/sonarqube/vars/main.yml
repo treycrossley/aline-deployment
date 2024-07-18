@@ -1,0 +1,8 @@
+# sonarqube/vars/main.yml
+---
+sonar_installation: sonarqube-9.9.2.77730
+sonar_user: ec2-user
+sonarqube_port: 9000
+base_url: http://{{ansible_host}}:{{sonarqube_port}}/api
+default_password: admin
+ansible_python_interpreter: /usr/bin/python3.9

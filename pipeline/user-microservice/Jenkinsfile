@@ -1,0 +1,113 @@
+
+pipeline {
+    agent any
+
+    environment {
+        AWS_REGION = 'us-east-1'
+        ECR_REPO = 'user-microservice-tc'
+        DOCKER_IMAGE = 'user-microservice'
+        AWS_ACCOUNT_ID = '590184030834'
+        AWS_CREDENTIALS = 'aws-credentials-id' 
+        GIT_CREDENTIALS = 'gitlab-login-credential'
+        GIT_URL = 'https://git1.smoothstack.com/cohorts/2024/2024-03-11_cloud/organizations/care-bear-cuddle-buddies/trey-crossley/aline-financial/aline-user-microservice'
+        CLUSTER_NAME = 'aline_cluster_tc'
+    }
+
+    options {
+        gitLabConnection('gitlab-connect')
+        gitlabBuilds(builds: ['build'])
+    }
+
+    tools {
+        maven 'maven'
+        dockerTool 'docker'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                updateGitlabCommitStatus name: 'build', state: 'running'
+                script {
+                    // Checkout main repository
+                    checkout([$class: 'GitSCM',
+                            branches: [[name: 'develop']],
+                            userRemoteConfigs: [[url: "${GIT_URL}", credentialsId: "${GIT_CREDENTIALS}"]]])
+
+                    // Initialize and update submodules
+                    sh 'git submodule init'
+                    sh 'git submodule update'
+                }
+            }
+        }
+
+        stage('Build Maven Package') {
+            steps {
+                sh "mvn clean package -DskipTests"
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('sonar') {
+                    sh "mvn sonar:sonar -Dsonar.projectKey=user-microservice-sonarqube -Dsonar.projectName='user-microservice-sonarqube'"
+                }
+            }
+        }
+
+
+        stage('Build Docker Image') {
+            steps {
+                sh """
+                    docker build -t ${DOCKER_IMAGE}:${env.BUILD_ID} .
+                """
+            }
+        }
+
+        stage('Push Docker Image to ECR') {
+            steps {
+                withAWS(region: "${AWS_REGION}", credentials: "${AWS_CREDENTIALS}") {
+                    sh """
+                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                        docker tag ${DOCKER_IMAGE}:${env.BUILD_ID} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${env.BUILD_ID}
+                        docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${env.BUILD_ID}
+                    """
+                }
+            }
+        }
+
+        stage('Update Kubeconfig') {
+            steps {
+                withAWS(region: "${AWS_REGION}", credentials: "${AWS_CREDENTIALS}") {
+                    // Run the aws eks update-kubeconfig command
+                    sh "aws eks update-kubeconfig --region ${AWS_REGION} --name ${CLUSTER_NAME}"
+                }
+            }
+        }
+
+        stage('Deploy to EKS') {
+            steps {
+                withAWS(region: "${AWS_REGION}", credentials: "${AWS_CREDENTIALS}") {
+                    sh """
+                        kubectl set image deployment/user-microservice \
+                        user-microservice=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${env.BUILD_ID}
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs()
+        }
+        failure {
+            updateGitlabCommitStatus name: 'build', state: 'failed'
+        }
+        success {
+            updateGitlabCommitStatus name: 'build', state: 'success'
+        }
+        aborted {
+            updateGitlabCommitStatus name: 'build', state: 'canceled'
+        }
+    }
+}

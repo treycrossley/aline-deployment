@@ -1,0 +1,54 @@
+# sonarqube/tasks/configure.yml
+---
+- name: Generate user token via SonarQube API
+  uri:
+    url: "{{ base_url }}/user_tokens/generate"
+    method: POST
+    user: admin
+    password: "{{ default_password }}"
+    body_format: form-urlencoded
+    body:
+      name: sonarqube_access_token
+      login: admin
+    return_content: yes
+    force_basic_auth: true
+  register: token_response
+  retries: 3
+  delay: 10
+  until: token_response.status == 200
+
+- name: Extract SonarQube token from response
+  set_fact:
+    sonar_token: "{{ token_response.json.token }}"
+
+- debug:
+    msg: "Generated SonarQube token: {{ token_response.json }}"
+
+- name: Update SonarQube token in Secrets Manager (using dictionary)
+  aws_secret:
+    region: "us-east-1"
+    name: "aline/tc/sonarqube_token"
+    secret: "{{ {'sonarqubeToken': sonar_token} | to_json }}"
+    state: present
+
+- name: Retrieve login info from Secrets Manager
+  set_fact:
+    login_info: "{{ lookup('aws_secret', 'aline/tc/dev_pw') }}"
+
+- name: Change default password
+  uri:
+    url: "{{ base_url }}/users/change_password"
+    method: POST
+    user: "{{ sonar_token }}"
+    body_format: form-urlencoded
+    body:
+      login: admin
+      password: "{{ login_info.dev_pw }}"
+      previousPassword: "{{ default_password }}"
+    return_content: yes
+    force_basic_auth: true
+    status_code: [200, 204]
+  register: password_change_response
+
+- debug:
+    msg: "Password change response: {{ password_change_response.status }}"

@@ -1,0 +1,112 @@
+pipeline {
+    agent any
+
+    environment {
+        AWS_REGION = 'us-east-1'
+        ECR_REPO = 'account-microservice-tc'
+        DOCKER_IMAGE = 'account-microservice'
+        AWS_ACCOUNT_ID = '590184030834' // Replace with your AWS account ID
+        AWS_CREDENTIALS = 'aws-credentials-id' // Replace with the ID of your AWS credentials in Jenkins
+        GIT_CREDENTIALS = 'gitlab-login-credential' // Replace with the ID of your GitLab credentials in Jenkins
+        GIT_URL = 'https://git1.smoothstack.com/cohorts/2024/2024-03-11_cloud/organizations/care-bear-cuddle-buddies/trey-crossley/aline-financial/aline-account-microservice' // Replace with the Git URL of your account-microservice repository
+        CLUSTER_NAME = 'aline_cluster_tc'
+    }
+
+    options {
+        gitLabConnection('gitlab-connect')
+        gitlabBuilds(builds: ['build'])
+    }
+
+    tools {
+        maven 'maven'
+        dockerTool 'docker'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                updateGitlabCommitStatus name: 'build', state: 'running'
+                script {
+                    // Checkout account-microservice repository
+                    checkout([$class: 'GitSCM',
+                            branches: [[name: 'develop']],
+                            userRemoteConfigs: [[url: "${GIT_URL}", credentialsId: "${GIT_CREDENTIALS}"]]])
+
+                    // Initialize and update submodules (if any)
+                    sh 'git submodule init'
+                    sh 'git submodule update'
+                }
+            }
+        }
+
+        stage('Build Maven Package') {
+            steps {
+                // Execute Maven clean package
+                sh "mvn clean package -DskipTests"
+            }
+        }
+
+         stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('sonar') {
+                    sh "mvn sonar:sonar -Dsonar.projectKey=account-microservice-sonarqube -Dsonar.projectName='account-microservice-sonarqube'"
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    docker.build("${DOCKER_IMAGE}:${env.BUILD_ID}")
+                }
+            }
+        }
+
+        stage('Push Docker Image to ECR') {
+            steps {
+                withAWS(region: "${AWS_REGION}", credentials: "${AWS_CREDENTIALS}") {
+                    sh """
+                        aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+                        docker tag ${DOCKER_IMAGE}:${env.BUILD_ID} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${env.BUILD_ID}
+                        docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${env.BUILD_ID}
+                    """
+                }
+            }
+        }
+
+        stage('Update Kubeconfig') {
+            steps {
+                withAWS(region: "${AWS_REGION}", credentials: "${AWS_CREDENTIALS}") {
+                    // Run the aws eks update-kubeconfig command
+                    sh "aws eks update-kubeconfig --region ${AWS_REGION} --name ${CLUSTER_NAME}"
+                }
+            }
+        }
+
+        stage('Deploy to EKS') {
+            steps {
+                withAWS(region: "${AWS_REGION}", credentials: "${AWS_CREDENTIALS}") {
+                    sh """
+                        kubectl set image deployment/account-microservice \
+                        account-microservice=${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:${env.BUILD_ID}
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            cleanWs()
+        }
+        failure {
+            updateGitlabCommitStatus name: 'build', state: 'failed'
+        }
+        success {
+            updateGitlabCommitStatus name: 'build', state: 'success'
+        }
+        aborted {
+            updateGitlabCommitStatus name: 'build', state: 'canceled'
+        }
+    }
+}

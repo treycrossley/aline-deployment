@@ -1,0 +1,63 @@
+# jenkins/tasks/configure_plugins.yml
+---
+- name: Retrieve login info from Secrets Manager
+  set_fact:
+    login_info: "{{ lookup('aws_secret', 'aline/tc/dev_pw') }}"
+
+- name: Check Jenkins status
+  uri:
+    url: "{{ base_url }}/api/json"
+    method: GET
+    return_content: yes
+    force_basic_auth: true
+    timeout: 5
+    user: "{{ login_info.dev_login }}"
+    password: "{{ login_info.dev_pw }}"
+  register: jenkins_status
+  until: jenkins_status.status == 200
+  retries: 3
+  delay: 10
+
+- name: Install Jenkins Plugins
+  jenkins_plugin:
+    url_username: "{{ login_info.dev_login }}"
+    url_password: "{{ login_info.dev_pw }}"
+    name: "{{ item }}"
+    state: present
+  loop: "{{ plugins_to_install }}"
+
+- name: Get SonarQube ansible_host
+  set_fact:
+    sonarqube_host: "{{ hostvars[item]['ansible_host'] }}"
+  loop: "{{ groups['sonarqube'] }}"
+  run_once: true
+
+- name: Set JCasC Config location
+  blockinfile:
+    path: /etc/systemd/system/jenkins.service.d/override.conf
+    block: |
+      [Service]
+      Environment="CASC_JENKINS_CONFIG={{ config_dir }}"
+    create: yes  # Create the file if it doesn't exist
+    state: present
+    mode: '0644'
+
+- name: Copy configs
+  copy:
+    src: casc_configs  # Path to the source directory
+    dest: "{{ jenkins_home }}"  # Path to the destination directory
+
+
+- name: Update serverUrl in sonarGlobalConfiguration
+  ansible.builtin.lineinfile:
+    path: "{{ config_dir }}/jenkins.yaml" 
+    regexp: '^(\s+serverUrl:\s+)'
+    line: '      serverUrl: "http://{{ sonarqube_host }}:9000"'
+
+
+- name: Restart Jenkins & Reload Daemon
+  systemd:
+    name: jenkins
+    state: restarted
+    daemon_reload: yes
+  become: true

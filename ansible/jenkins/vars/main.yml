@@ -1,0 +1,41 @@
+---
+# vars file for jenkins
+jenkins_home: /var/lib/jenkins
+groovy_init_dir: "{{ jenkins_home }}/init.groovy.d"
+config_dir: "{{ jenkins_home }}/casc_configs"
+ansible_python_interpreter: /usr/bin/python3.9
+jenkins_port: 8080
+base_url: http://{{ansible_host}}:{{jenkins_port}}
+repositories:
+  - project_id: "4917" 
+    project_name: "user-microservice-pipeline"
+  - project_id: "4918" 
+    project_name: "underwriter-microservice-pipeline"
+  - project_id: "4919"
+    project_name: "bank-microservice-pipeline"
+  - project_id: "4920"
+    project_name: "account-microservice-pipeline"
+  - project_id: "4921" 
+    project_name: "transaction-microservice-pipeline"
+  - project_id: "4935"
+    project_name: "gateway-pipeline"
+  - project_id: "4936"
+    project_name: "admin-portal-pipeline"
+  - project_id: "4937"
+    project_name: "landing-portal-pipeline"
+  - project_id: "4938"
+    project_name: "member-dashboard-pipeline"
+plugins_to_install:
+  - "git"
+  - "docker-plugin"
+  - "workflow-aggregator"
+  - "gitlab-plugin"
+  - "nodejs"
+  - "configuration-as-code"
+  - "ws-cleanup"
+  - "pipeline-aws"
+  - "pipeline-maven"
+  - "pipeline-utility-steps"
+  - "workflow-basic-steps"
+  - "sonar"
+  - "terraform"
